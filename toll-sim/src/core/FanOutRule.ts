@@ -43,36 +43,46 @@ export function assignTargetBooth(originLane: number, L: number, B: number, sigm
 }
 
 /**
- * Returns top-K ranked booth candidates for a given origin lane.
- * Formula:
- * mu(ln) = (B-1)/2 if L=1 else ln/(L-1)*(B-1)
- * score(j) = exp(-(j - mu)^2 / (2*sigma^2))
+ * Returns Quota-Based sorted booth candidates for a given origin lane.
+ * Core Logic:
+ * j_star = round(((origin + 0.5) * B / L) - 0.5)
+ * R = ceil(B / L)
+ * score(j) = max(0, 1 - |j - j_star| / R)
  */
 export function getFanOutCandidates(
     originLane: number,
     L: number,
-    B: number,
-    sigma: number,
-    topK: number = 3
+    B: number
 ): number[] {
-    // 1. Calculate mu
-    const mu = (L === 1)
-        ? (B - 1) / 2
-        : (originLane / (L - 1)) * (B - 1);
+    // 1. Calculate ideal center index (0-based)
+    // Map lane center (origin + 0.5) to booth space
+    const centerRatio = (originLane + 0.5) / L;
+    const j_star = Math.round(centerRatio * B - 0.5);
 
-    // 2. Score all booths
+    // 2. Calculate Influence Radius (Quota)
+    const R = Math.ceil(B / L);
+
+    // 3. Score booths
     const scores: { index: number; score: number }[] = [];
     for (let j = 0; j < B; j++) {
-        const dist = j - mu;
-        const score = Math.exp(-(dist * dist) / (2 * sigma * sigma));
-        scores.push({ index: j, score });
+        const dist = Math.abs(j - j_star);
+        // Linear falloff within radius R
+        const score = Math.max(0, 1 - dist / R);
+
+        if (score > 0) {
+            scores.push({ index: j, score });
+        }
     }
 
-    // 3. Sort descending
-    scores.sort((a, b) => b.score - a.score);
+    // 4. Sort: Descending Score, then Ascending Index (Symmetry)
+    scores.sort((a, b) => {
+        if (Math.abs(b.score - a.score) > 0.0001) {
+            return b.score - a.score;
+        }
+        return a.index - b.index; // Ascending index for equality
+    });
 
-    // 4. Return top K
-    return scores.slice(0, topK).map(s => s.index);
+    return scores.map(s => s.index);
 }
 
 
