@@ -13,6 +13,7 @@ import { type Grid, getGap, getQueueLength } from './GridUtils';
 import { assignTargetBooth } from './BoothAssignment';
 import { getForwardProbability } from './MovementRule';
 import { getFanOutCandidates } from './FanOutRule';
+import { getMergeCandidates, canMergePhysically } from './FanInRule';
 import { canChangeLane } from './LaneChangeRule';
 import { updateServiceState, type ServiceMode } from './ServiceRule';
 
@@ -104,32 +105,22 @@ export class Simulation {
                     continue;
                 }
 
-                /* ---------- Common flags ---------- */
                 const isVanishingLane = i >= L;
                 const atMergeWall = x >= MERGE_START;
                 const nextX = x + 1;
 
-                // 🔧 FIX 1: Queue zone = tất cả booth sau fan-out
-                const inQueueZone =
-                    car.passedFanOut && x < MERGE_START;
+                const inQueueZone = car.passedFanOut && x < MERGE_START;
 
-                /* =====================================================
-                   FAN-OUT JUNCTION (Teleport)
-                   ===================================================== */
+                /* ================= FAN-OUT ================= */
                 if (x === DIV_START && !car.passedFanOut) {
-                    const candidates = getFanOutCandidates(
-                        car.originLane,
-                        L,
-                        B
-                    );
+                    const candidates = getFanOutCandidates(car.originLane, L, B);
 
                     let teleported = false;
                     for (const j of candidates) {
-                        const occupiedNow =
-                            grid[j][x] !== null && grid[j][x] !== car;
-                        const occupiedNext = nextGrid[j][x] !== null;
-
-                        if (!occupiedNow && !occupiedNext) {
+                        if (
+                            grid[j][x] === null &&
+                            nextGrid[j][x] === null
+                        ) {
                             nextGrid[j][x] = car;
                             car.passedFanOut = true;
                             car.isTeleporting = j !== i;
@@ -138,112 +129,98 @@ export class Simulation {
                         }
                     }
 
-                    if (teleported) continue;
-
-                    // stop-line behavior
-                    nextGrid[i][x] = car;
+                    if (!teleported) nextGrid[i][x] = car;
                     continue;
                 }
 
                 car.isTeleporting = false;
 
-                /* ---------- 3A. Forward ---------- */
+                /* ================= FORWARD ================= */
                 let forwardSuccess = false;
 
                 if (!(isVanishingLane && atMergeWall)) {
-                    let forwardFree = true;
-                    if (nextX < COLS) {
-                        if (grid[i][nextX] || nextGrid[i][nextX]) {
-                            forwardFree = false;
+                    const forwardBlocked =
+                        nextX < COLS &&
+                        (grid[i][nextX] || nextGrid[i][nextX]);
+
+                    if (!forwardBlocked) {
+                        const gap = getGap(grid, i, x, B);
+                        const p_raw = getForwardProbability(
+                            { useAdaptive, a, a_min, a_max, d_0, beta },
+                            gap
+                        );
+                        const p_forward = Math.max(p_raw, p_min);
+
+                        if (Math.random() < p_forward) {
+                            if (nextX < COLS) nextGrid[i][nextX] = car;
+                            else this.passedCars++;
+                            forwardSuccess = true;
                         }
-                    }
-
-                    const gap = getGap(grid, i, x, B);
-                    const p_raw = getForwardProbability(
-                        { useAdaptive, a, a_min, a_max, d_0, beta },
-                        gap
-                    );
-                    const p_forward = Math.max(p_raw, p_min);
-
-                    if (forwardFree && Math.random() < p_forward) {
-                        if (nextX < COLS) nextGrid[i][nextX] = car;
-                        else this.passedCars++;
-                        forwardSuccess = true;
                     }
                 }
 
                 if (forwardSuccess) continue;
 
-                /* ---------- 3B. Lane Change ---------- */
-
-                // lock zone chỉ chặn highway drift trước fan-out
-                // const inLockZone =
-                //     !car.passedFanOut && !isVanishingLane && x >= LOCK_START;
-                const inLockZone = x >= LOCK_START;
-
-                // 🔧 FIX 2: kẹt = kẹt vật lý, không phải fail xác suất
+                /* ================= LANE CHANGE ESCAPE ================= */
                 const forwardBlocked =
                     nextX < COLS &&
-                    (grid[i][nextX] !== null ||
-                        nextGrid[i][nextX] !== null);
+                    (grid[i][nextX] || nextGrid[i][nextX]);
+
+                const inLockZone = x >= LOCK_START;
 
                 let laneChangeSuccess = false;
 
                 if (
                     car.laneChangeCooldown === 0 &&
                     !inLockZone &&
-                    (isVanishingLane || forwardBlocked)
+                    forwardBlocked
                 ) {
-                    let targetLane = i;
+                    const candidates: number[] = [];
+                    if (i - 1 >= 0) candidates.push(i - 1);
+                    if (i + 1 < B) candidates.push(i + 1);
 
-                    /* --- Vanishing lane merge --- */
-                    if (isVanishingLane && atMergeWall) {
-                        targetLane = i - 1;
-                    }
-
-                    /* --- Queue zone lateral escape --- */
-                    if (inQueueZone && forwardBlocked) {
-                        const candidates: number[] = [];
-                        if (i - 1 >= 0) candidates.push(i - 1);
-                        if (i + 1 < B) candidates.push(i + 1);
-
-                        if (candidates.length > 0) {
-                            targetLane =
-                                candidates[
-                                Math.floor(
-                                    Math.random() * candidates.length
-                                )
-                                ];
-                        }
-                    }
-
-                    if (
-                        targetLane !== i &&
-                        canChangeLane(grid, targetLane, x) &&
-                        nextGrid[targetLane][x] === null
-                    ) {
-                        let p_change = 0.5;
-
-                        if (isVanishingLane && atMergeWall) {
-                            const q = getQueueLength(grid, i, x);
-                            const p0 = 0.3;
-                            p_change = Math.min(
-                                1,
-                                p0 + this.params.alpha * q
-                            );
-                        }
-
-                        if (Math.random() < p_change) {
+                    for (const targetLane of candidates) {
+                        if (
+                            canChangeLane(grid, targetLane, x) &&
+                            nextGrid[targetLane][x] === null
+                        ) {
                             nextGrid[targetLane][x] = car;
                             car.laneChangeCooldown = laneChangeCooldown;
                             laneChangeSuccess = true;
+                            break;
                         }
                     }
                 }
 
                 if (laneChangeSuccess) continue;
 
-                /* ---------- 3C. Stay ---------- */
+                /* ================= FAN-IN ================= */
+                if (isVanishingLane && atMergeWall) {
+                    const mergeCandidates = getMergeCandidates(i, L, B);
+
+                    for (const h of mergeCandidates) {
+                        if (canMergePhysically(grid, nextGrid, h, x)) {
+                            const q = getQueueLength(grid, i, x);
+                            const p0 = 0.3;
+                            const p_merge = Math.min(
+                                1,
+                                p0 + this.params.alpha * q
+                            );
+
+                            if (Math.random() < p_merge) {
+                                nextGrid[h][x] = car;
+                                car.laneChangeCooldown =
+                                    laneChangeCooldown;
+                                laneChangeSuccess = true;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                if (laneChangeSuccess) continue;
+
+                /* ================= STAY ================= */
                 nextGrid[i][x] = car;
             }
         }
