@@ -109,8 +109,12 @@ export class Simulation {
                 const atMergeWall = x >= MERGE_START;
                 const nextX = x + 1;
 
+                // 🔧 FIX 1: Queue zone = tất cả booth sau fan-out
+                const inQueueZone =
+                    car.passedFanOut && x < MERGE_START;
+
                 /* =====================================================
-                   FAN-OUT JUNCTION — MUST RUN BEFORE FORWARD
+                   FAN-OUT JUNCTION (Teleport)
                    ===================================================== */
                 if (x === DIV_START && !car.passedFanOut) {
                     const candidates = getFanOutCandidates(
@@ -121,28 +125,26 @@ export class Simulation {
 
                     let teleported = false;
                     for (const j of candidates) {
-                        const occupiedNow = grid[j][x] !== null && grid[j][x] !== car;
+                        const occupiedNow =
+                            grid[j][x] !== null && grid[j][x] !== car;
                         const occupiedNext = nextGrid[j][x] !== null;
 
                         if (!occupiedNow && !occupiedNext) {
                             nextGrid[j][x] = car;
                             car.passedFanOut = true;
-                            car.isTeleporting = (j !== i);
+                            car.isTeleporting = j !== i;
                             teleported = true;
                             break;
                         }
                     }
 
-                    if (teleported) {
-                        continue; // turn consumed
-                    } else {
-                        // stop-line behavior: wait & retry next tick
-                        if (nextGrid[i][x] === null) nextGrid[i][x] = car;
-                        continue;
-                    }
+                    if (teleported) continue;
+
+                    // stop-line behavior
+                    nextGrid[i][x] = car;
+                    continue;
                 }
 
-                // reset teleport visual flag once past junction
                 car.isTeleporting = false;
 
                 /* ---------- 3A. Forward ---------- */
@@ -172,16 +174,47 @@ export class Simulation {
 
                 if (forwardSuccess) continue;
 
-                /* ---------- 3B. Lane Change (Fan-in / Merge) ---------- */
-                const inLockZone = !isVanishingLane && x >= LOCK_START;
+                /* ---------- 3B. Lane Change ---------- */
+
+                // lock zone chỉ chặn highway drift trước fan-out
+                // const inLockZone =
+                //     !car.passedFanOut && !isVanishingLane && x >= LOCK_START;
+                const inLockZone = x >= LOCK_START;
+
+                // 🔧 FIX 2: kẹt = kẹt vật lý, không phải fail xác suất
+                const forwardBlocked =
+                    nextX < COLS &&
+                    (grid[i][nextX] !== null ||
+                        nextGrid[i][nextX] !== null);
+
                 let laneChangeSuccess = false;
 
-                if (car.laneChangeCooldown === 0 && !inLockZone) {
+                if (
+                    car.laneChangeCooldown === 0 &&
+                    !inLockZone &&
+                    (isVanishingLane || forwardBlocked)
+                ) {
                     let targetLane = i;
 
-                    // Vanishing lane must merge upward
+                    /* --- Vanishing lane merge --- */
                     if (isVanishingLane && atMergeWall) {
                         targetLane = i - 1;
+                    }
+
+                    /* --- Queue zone lateral escape --- */
+                    if (inQueueZone && forwardBlocked) {
+                        const candidates: number[] = [];
+                        if (i - 1 >= 0) candidates.push(i - 1);
+                        if (i + 1 < B) candidates.push(i + 1);
+
+                        if (candidates.length > 0) {
+                            targetLane =
+                                candidates[
+                                Math.floor(
+                                    Math.random() * candidates.length
+                                )
+                                ];
+                        }
                     }
 
                     if (
@@ -194,7 +227,10 @@ export class Simulation {
                         if (isVanishingLane && atMergeWall) {
                             const q = getQueueLength(grid, i, x);
                             const p0 = 0.3;
-                            p_change = Math.min(1, p0 + this.params.alpha * q);
+                            p_change = Math.min(
+                                1,
+                                p0 + this.params.alpha * q
+                            );
                         }
 
                         if (Math.random() < p_change) {
