@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mô phỏng CA – Trạm Thu Phí v2.1.5 (Fan-out + Lane Commitment)</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#111; color:#eee; margin:20px; }
+    canvas { background:#222; display:block; margin:10px 0; }
+    .stats { margin-top:10px; font-size:14px; }
+    .notes { background:#1c1c1c; padding:12px; border-left:4px solid #4dd0e1; margin-top:15px; font-size:14px; }
+    .controls { display:flex; gap:20px; flex-wrap:wrap; margin:10px 0; }
+    .controls div { background:#1b1b1b; padding:8px 12px; border-radius:6px; font-size:13px; }
+    label { display:block; }
+  </style>
+</head>
+<body>
+
+<h2>Mô phỏng trạm thu phí – v2.1.5</h2>
+<p>Phiên bản này mở rộng mô hình bằng <b>fan-out (tách làn)</b> và <b>lane commitment</b> trước booth. Chưa áp dụng fan-in.</p>
+
+<canvas id="sim" width="900" height="360"></canvas>
+
+<div class="controls">
+  <div><label>λ (lưu lượng): <span id="lval"></span></label><input type="range" id="lambda" min="0.1" max="0.9" step="0.05" value="0.6"></div>
+  <div><label>a (gia tốc): <span id="aval"></span></label><input type="range" id="acc" min="0.1" max="1" step="0.1" value="0.9"></div>
+  <div><label>μ (service time): <span id="muval"></span></label><input type="range" id="mu" min="5" max="30" step="1" value="15"></div>
+  <div>
+    <label>Chế độ T<sub>s</sub></label>
+    <label><input type="radio" name="ts" value="fixed" checked> Cố định</label>
+    <label><input type="radio" name="ts" value="exp"> Phân phối mũ</label>
+  </div>
+</div>
+
+<div class="stats">
+  <div>⏱️ Thời gian: <span id="time">0</span> s</div>
+  <div>🚗 Xe qua trạm: <span id="passed">0</span></div>
+</div>
+
+<div class="notes">
+<b>Logic chính:</b><br>
+– L = 3 làn ban đầu, B = 6 booth lanes (mỗi làn tách thành 2).<br>
+– Fan-out chỉ được phép trong một vùng giới hạn.<br>
+– Sau đó xe bị khóa làn (lane commitment) trước khi vào booth.<br>
+– Mỗi booth xử lý song song, chưa có nhập làn phía sau.
+</div>
+
+<script>
+// ===== Tham số hình học =====
+const CELL = 10;
+const L = 3;              // số làn ban đầu
+const B = 6;              // số booth lanes = 2L
+const COLS = 90;
+const BOOTH_X = 55;
+const DIV_START = 30;     // bắt đầu fan-out
+const LOCK_START = 45;    // bắt đầu khóa làn
+const DIV_END = 50;       // kết thúc fan-out (trước booth)
+
+// ===== Tham số mô phỏng =====
+let lambda = 0.6;
+let a = 0.9;
+let mu = 15;
+let serviceMode = 'fixed'; // fixed | exp
+
+// ===== Trạng thái =====
+let grid = Array.from({ length: B }, () => Array(COLS).fill(null));
+let simTime = 0;
+let passedCars = 0;
+
+function newCar(type, originLane) {
+  return {
+    type,
+    originLane,
+    inService: false,
+    service: 0,
+    servedOnce: false
+  };
+}
+
+// ===== Arrival =====
+function spawn() {
+  if (Math.random() < lambda) {
+    const lane = Math.floor(Math.random() * L);
+    const boothLane = 2 * lane; // booth mặc định
+    if (!grid[boothLane][0]) {
+      grid[boothLane][0] = newCar(Math.random() < 0.6 ? 'ETC' : 'MANUAL', lane);
+    }
+  }
+}
+
+// ===== Fan-out decision (đã sửa lỗi return) =====
+function fanOutDecision(i, x, car) {
+  // chỉ cho phép đổi làn trong vùng fan-out và TRƯỚC đoạn khóa làn
+  if (x < DIV_START || x >= LOCK_START) return i;
+
+  const b1 = 2 * car.originLane;
+  const b2 = b1 + 1;
+  const other = (i === b1) ? b2 : b1;
+
+  // rule đơn giản: nếu booth hiện tại phía trước bị chiếm
+  // và booth còn lại trống tại cùng vị trí x -> đổi làn
+  if (!grid[other][x] && grid[i][x + 1]) {
+    return other;
+  }
+  return i;
+}
+
+// ===== Update =====
+function step() {
+  simTime++;
+  spawn();
+
+  for (let i = 0; i < B; i++) {
+    for (let x = COLS - 1; x >= 0; x--) {
+      const car = grid[i][x];
+      if (!car) continue;
+
+      // ===== Thu phí xe tiền mặt =====
+      if (car.type === 'MANUAL') {
+        if (x === BOOTH_X && !car.inService && !car.servedOnce) {
+          car.inService = true;
+          car.service = serviceMode === 'fixed'
+            ? mu
+            : Math.ceil(-mu * Math.log(1 - Math.random()));
+        }
+        if (car.inService) {
+          car.service--;
+          if (car.service <= 0) {
+            car.inService = false;
+            car.servedOnce = true;
+          }
+          continue;
+        }
+      }
+
+      // ===== Fan-out decision =====
+      const targetLane = fanOutDecision(i, x, car);
+      if (targetLane !== i) {
+        grid[i][x] = null;
+        grid[targetLane][x] = car;
+        continue;
+      }
+
+      // ===== Di chuyển tiến (v_max = 1) =====
+      const nextX = x + 1;
+      if (nextX < COLS && !grid[i][nextX]) {
+        if (Math.random() < a) {
+          grid[i][x] = null;
+          if (nextX === COLS - 1) passedCars++;
+          else grid[i][nextX] = car;
+        }
+      }
+    }
+  }
+}
+
+// ===== Draw =====
+const ctx = document.getElementById('sim').getContext('2d');
+function draw() {
+  ctx.clearRect(0, 0, 900, 360);
+
+  // booth line
+  ctx.strokeStyle = 'red';
+  ctx.beginPath();
+  ctx.moveTo(BOOTH_X * CELL, 0);
+  ctx.lineTo(BOOTH_X * CELL, B * CELL);
+  ctx.stroke();
+
+  // fan-out zone
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.fillRect(DIV_START * CELL, 0, (LOCK_START - DIV_START) * CELL, B * CELL);
+
+  // lane commitment zone
+  ctx.fillStyle = 'rgba(255,0,0,0.05)';
+  ctx.fillRect(LOCK_START * CELL, 0, (DIV_END - LOCK_START) * CELL, B * CELL);
+
+  for (let i = 0; i < B; i++) {
+    for (let x = 0; x < COLS; x++) {
+      const car = grid[i][x];
+      if (!car) continue;
+      ctx.fillStyle = car.type === 'ETC' ? '#4dd0e1' : '#ffca28';
+      ctx.fillRect(x * CELL, i * CELL, CELL - 1, CELL - 1);
+    }
+  }
+}
+
+function updateUI() {
+  time.textContent = simTime;
+  passed.textContent = passedCars;
+  lval.textContent = lambda;
+  aval.textContent = a;
+  muval.textContent = mu;
+}
+
+// ===== UI bindings =====
+document.getElementById('lambda').oninput = e => lambda = +e.target.value;
+document.getElementById('acc').oninput = e => a = +e.target.value;
+document.getElementById('mu').oninput = e => mu = +e.target.value;
+document.getElementsByName('ts').forEach(r => r.onchange = e => serviceMode = e.target.value);
+
+setInterval(() => {
+  step();
+  draw();
+  updateUI();
+}, 200);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mô phỏng CA – Trạm Thu Phí (NaSch điều chỉnh)</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#111; color:#eee; margin:20px; }
+    canvas { background:#222; display:block; margin:10px 0; }
+    .controls { display:flex; gap:20px; flex-wrap:wrap; margin-top:10px; }
+    .control { font-size:14px; }
+    label { display:block; }
+    .notes { background:#1c1c1c; padding:12px; border-left:4px solid #4dd0e1; margin-top:15px; font-size:14px; }
+    .stats { margin-top:10px; font-size:14px; }
+    .legend span { margin-right:15px; }
+  </style>
+</head>
+<body>
+
+<h2>Mô phỏng trạm thu phí bằng Cellular Automata (NaSch điều chỉnh)</h2>
+<p>Mô hình Nagel–Schreckenberg được <b>điều chỉnh</b>: mỗi bước thời gian xe chỉ có thể <b>đi tối đa 1 ô</b>, vận tốc được biểu diễn bằng <b>xác suất di chuyển</b>. Cách này loại bỏ hiện tượng nhảy qua trạm và double service.</p>
+
+<div class="legend">
+  <span>🟦 Xe ETC</span>
+  <span>🟨 Xe trả tiền mặt</span>
+  <span>🔴 Buồng thu phí</span>
+</div>
+
+<canvas id="sim" width="900" height="360"></canvas>
+
+<div class="stats">
+  <div>⏱️ Thời gian: <span id="time">0</span> s</div>
+  <div>🚗 Xe qua trạm: <span id="passed">0</span></div>
+  <div>📏 Hàng chờ (trước booth): <span id="queue">0</span> xe</div>
+</div>
+
+<div class="controls">
+  <div class="control">
+    <label>🚦 Lưu lượng vào λ: <span id="lval"></span></label>
+    <input type="range" id="lambda" min="0.2" max="0.9" step="0.05" value="0.6">
+  </div>
+
+  <div class="control">
+    <label>⚙️ Gia tốc / phản ứng a: <span id="aval"></span></label>
+    <input type="range" id="a" min="0.1" max="1" step="0.1" value="0.6">
+  </div>
+
+  <div class="control">
+    <label>⏱ Mean service time μ (s): <span id="muval"></span></label>
+    <input type="range" id="mu" min="5" max="30" step="1" value="15">
+  </div>
+
+  <div class="control">
+    <label>🧾 Chế độ T<sub>s</sub> (xe tiền mặt)</label>
+    <label><input type="radio" name="tsmode" value="fixed" checked> Cố định</label>
+    <label><input type="radio" name="tsmode" value="exp"> Phân phối mũ</label>
+  </div>
+</div>
+
+<div class="notes">
+<b>Giải thích:</b><br>
+– Mỗi ô ≈ 7.5m, mỗi bước = 1 giây.<br>
+– Xe chỉ có thể đi 0 hoặc 1 ô mỗi bước (v<sub>max</sub>=1).<br>
+– Gia tốc a quyết định <i>xác suất</i> xe được phép tiến lên khi phía trước trống.<br>
+– Xe <b>trả tiền mặt</b> chỉ được phục vụ khi đang ở đúng buồng thu phí.<br>
+– T<sub>s</sub> cố định = μ ; T<sub>s</sub> ngẫu nhiên ~ Exponential(mean = μ).
+</div>
+
+<script>
+// ===== Tham số cố định =====
+const CELL = 10;
+const ROWS = 6;
+const COLS = 90;
+const BOOTH_X = 50;
+
+// ===== Tham số điều chỉnh =====
+let lambda = 0.6;
+let a = 0.6;
+let mu = 15;
+let serviceMode = 'fixed'; // 'fixed' | 'exp'
+
+// ===== Trạng thái =====
+let grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+let simTime = 0;
+let passedCars = 0;
+
+function newCar(type) {
+  return {
+    type: type,
+    inService: false,
+    service: 0,
+    servedOnce: false
+  };
+}
+
+// ===== Arrival =====
+function spawn() {
+  if (Math.random() < lambda) {
+    const lane = Math.floor(Math.random() * 3);
+    if (!grid[lane][0]) {
+      grid[lane][0] = newCar(Math.random() < 0.6 ? 'ETC' : 'MANUAL');
+    }
+  }
+}
+
+// ===== Update =====
+function step() {
+  simTime++;
+  spawn();
+
+  for (let i = 0; i < ROWS; i++) {
+    for (let x = COLS - 1; x >= 0; x--) {
+      const car = grid[i][x];
+      if (!car) continue;
+
+      // ===== Logic thu phí xe tiền mặt =====
+      if (car.type === 'MANUAL') {
+        if (x === BOOTH_X && !car.inService && !car.servedOnce) {
+          car.inService = true;
+          car.service = serviceMode === 'fixed'
+            ? mu
+            : Math.ceil(-mu * Math.log(1 - Math.random()));
+        }
+
+        if (car.inService) {
+          car.service--;
+          if (car.service <= 0) {
+            car.inService = false;
+            car.servedOnce = true;
+          }
+          continue;
+        }
+      }
+
+      // ===== Quyết định di chuyển (v_max = 1) =====
+      const nextX = x + 1;
+      if (nextX < COLS && !grid[i][nextX]) {
+        const pMove = Math.min(1, a * 1.5);
+        if (Math.random() < pMove) {
+          grid[i][x] = null;
+          if (nextX === COLS - 1) {
+            passedCars++;
+          } else {
+            grid[i][nextX] = car;
+          }
+        }
+      }
+    }
+  }
+}
+
+// ===== Draw =====
+const ctx = document.getElementById('sim').getContext('2d');
+function draw() {
+  ctx.clearRect(0, 0, 900, 360);
+
+  ctx.strokeStyle = 'red';
+  ctx.beginPath();
+  ctx.moveTo(BOOTH_X * CELL, 0);
+  ctx.lineTo(BOOTH_X * CELL, ROWS * CELL);
+  ctx.stroke();
+
+  for (let i = 0; i < ROWS; i++) {
+    for (let x = 0; x < COLS; x++) {
+      const car = grid[i][x];
+      if (!car) continue;
+      ctx.fillStyle = car.type === 'ETC' ? '#4dd0e1' : '#ffca28';
+      ctx.fillRect(x * CELL, i * CELL, CELL - 1, CELL - 1);
+    }
+  }
+}
+
+// ===== UI =====
+const lslider = document.getElementById('lambda');
+const aslider = document.getElementById('a');
+const muslider = document.getElementById('mu');
+const radios = document.getElementsByName('tsmode');
+
+lslider.oninput = () => lambda = +lslider.value;
+aslider.oninput = () => a = +aslider.value;
+muslider.oninput = () => mu = +muslider.value;
+radios.forEach(r => r.onchange = () => serviceMode = r.value);
+
+function updateUI() {
+  lval.textContent = lambda;
+  aval.textContent = a;
+  muval.textContent = mu;
+  time.textContent = simTime;
+  passed.textContent = passedCars;
+
+  let q = 0;
+  for (let i = 0; i < ROWS; i++) if (grid[i][BOOTH_X - 1]) q++;
+  queue.textContent = q;
+}
+
+setInterval(() => {
+  step();
+  draw();
+  updateUI();
+}, 200);
+</script>
+
+</body>
+</html>
