@@ -152,6 +152,12 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ grid, tick, L, showMerge
                         ctx.strokeRect(xPos + 2, yPos + 2, CELL - 4, CELL - 4);
                     }
 
+                    // Teleport Visualization
+                    if (car.isTeleporting) {
+                        ctx.fillStyle = 'rgba(255, 215, 0, 0.5)'; // Gold highlight
+                        ctx.fillRect(xPos, yPos, CELL, CELL);
+                    }
+
                     // ... Text ...
                     ctx.fillStyle = '#FFF';
                     ctx.font = '10px Arial';

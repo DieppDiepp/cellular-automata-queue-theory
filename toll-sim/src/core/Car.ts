@@ -12,6 +12,8 @@ export interface Car {
     laneChangeCooldown: number; // >0 means cannot change lane
     targetBooth?: number; // Assigned booth index (v3.1)
     mergeTargetLane?: number; // Assigned highway lane for merge (v3.2)
+    isTeleporting?: boolean; // Visual flag for fan-out teleport
+    passedFanOut?: boolean; // Logic flag: has completed fan-out junction logic
 }
 
 let carIdCounter = 0;

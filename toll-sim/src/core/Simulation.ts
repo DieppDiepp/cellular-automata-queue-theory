@@ -4,6 +4,7 @@ import {
     DEFAULT_SIGMA,
     LOCK_START,
     MERGE_START,
+    DIV_START,
     DEFAULT_ALPHA
 } from './constants';
 
@@ -11,7 +12,7 @@ import { newCar } from './Car';
 import { type Grid, getGap, getQueueLength } from './GridUtils';
 import { assignTargetBooth } from './BoothAssignment';
 import { getForwardProbability } from './MovementRule';
-import { getFanOutTarget } from './FanOutRule';
+import { getFanOutTarget, getFanOutCandidates } from './FanOutRule';
 import { canChangeLane, type LaneChangeMode } from './LaneChangeRule';
 import { updateServiceState, type ServiceMode } from './ServiceRule';
 
@@ -146,15 +147,43 @@ export class Simulation {
                 if (car.laneChangeCooldown === 0 && !inLockZone) {
                     let targetLane = i;
 
-                    // Fan-out giữ nguyên
-                    if (x < LOCK_START) {
-                        targetLane = getFanOutTarget(i, x, car);
+                    /* ===== FAN-OUT JUNCTION LOGIC (At Virtual Lane Creation) ===== */
+                    if (x === DIV_START && !car.passedFanOut) {
+                        const candidates = getFanOutCandidates(car.originLane, L, B, this.params.sigma);
+                        let teleported = false;
+                        for (const j of candidates) {
+                            // Independent Arbitration
+                            const spotOccupied = (grid[j][x] !== null && grid[j][x] !== car);
+                            const nextSpotOccupied = (nextGrid[j][x] !== null);
+                            if (!spotOccupied && !nextSpotOccupied) {
+                                nextGrid[j][x] = car;
+                                car.passedFanOut = true;
+                                car.isTeleporting = (j !== i);
+                                teleported = true;
+                                break;
+                            }
+                        }
+
+                        if (teleported) {
+                            continue; // Turn consumed
+                        } else {
+                            // Stay at junction to retry next tick
+                            if (nextGrid[i][x] === null) nextGrid[i][x] = car;
+                            continue; // Turn consumed
+                        }
                     }
-                    // Fan-in: làn ảo LUÔN muốn merge lên
-                    else if (isVanishingLane && atMergeWall) {
+
+                    // Reset teleport flag if departing junction
+                    if (x !== DIV_START || car.passedFanOut) {
+                        car.isTeleporting = false;
+                    }
+
+                    /* ===== FAN-IN / MERGE LOGIC ===== */
+                    if (isVanishingLane && atMergeWall) {
                         targetLane = i - 1;
                     }
 
+                    /* ===== EXECUTE LANE CHANGE ===== */
                     if (targetLane !== i && canChangeLane(grid, targetLane, x)) {
                         if (nextGrid[targetLane][x] === null) {
                             let p_change = 0.5;
