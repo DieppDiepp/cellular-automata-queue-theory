@@ -30,7 +30,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChang
                         step="50"
                         value={simulationSpeed}
                         onChange={(e) => onSpeedChange(parseInt(e.target.value))}
-                        style={{ direction: 'rtl' }} // Hack to make left=fast? Or just use normal: Left(50)=Fast, Right(1000)=Slow
+                        style={{ direction: 'rtl' }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', color: '#888' }}>
                         <span>Nhanh</span>
@@ -53,42 +53,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChang
 
                 <hr style={{ border: 'none', borderTop: '1px solid #444', margin: '15px 0' }} />
 
-                {/* Topology (Runtime) */}
-                <div className="control-group">
-                    <label
-                        title="Số lượng làn xe trên đường cao tốc dẫn vào trạm. Thay đổi sẽ ảnh hưởng đến vị trí xuất hiện xe mới."
-                        style={{ cursor: 'help', borderBottom: '1px dotted #888' }}
-                    >
-                        L (Làn cao tốc) <span>{params.L}</span>
-                    </label>
-                    <input
-                        type="range"
-                        min="1"
-                        max="5"
-                        step="1"
-                        value={params.L}
-                        onChange={(e) => onParamChange({ L: parseInt(e.target.value) })}
-                    />
-                </div>
-                <div className="control-group">
-                    <label
-                        title="Tổng số lượng làn thu phí (Booth). Thay đổi có thể làm mới lại lưới."
-                        style={{ cursor: 'help', borderBottom: '1px dotted #888' }}
-                    >
-                        B (Làn thu phí) <span>{params.B}</span>
-                    </label>
-                    <input
-                        type="range"
-                        min="1"
-                        max="10"
-                        step="1"
-                        value={params.B}
-                        onChange={(e) => onParamChange({ B: parseInt(e.target.value) })}
-                    />
-                </div>
-
-                <hr style={{ border: 'none', borderTop: '1px solid #444', margin: '15px 0' }} />
-
+                {/* Simulation Parameters */}
                 <div className="control-group">
                     <label
                         title="Tỉ lệ lưu lượng xe. Xác suất một xe mới sẽ xuất hiện ở mỗi làn cao tốc trong mỗi giây."
@@ -103,6 +68,23 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChang
                         step="0.05"
                         value={params.lambda}
                         onChange={(e) => onParamChange({ lambda: parseFloat(e.target.value) })}
+                    />
+                </div>
+
+                <div className="control-group">
+                    <label
+                        title="Proportion of ETC vehicles in incoming traffic."
+                        style={{ cursor: 'help', borderBottom: '1px dotted #888' }}
+                    >
+                        ETC Ratio <span>{params.etcRatio}</span>
+                    </label>
+                    <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={params.etcRatio}
+                        onChange={(e) => onParamChange({ etcRatio: parseFloat(e.target.value) })}
                     />
                 </div>
 
@@ -190,49 +172,22 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChang
                                 onChange={(e) => onParamChange({ beta: parseFloat(e.target.value) })}
                             />
                         </div>
-                    </div>
-                )}
-
-                {/* Lane Changing Logic */}
-                <div className="control-group radio-group">
-                    <label style={{ marginBottom: '10px', cursor: 'help', borderBottom: '1px dotted #888' }} title="Chiến lược quyết định khi nào xe sẽ đổi làn.">
-                        Động cơ đổi làn
-                    </label>
-                    <label title="Chỉ đổi làn khi bị xe phía trước chặn.">
-                        <input
-                            type="radio"
-                            name="lc"
-                            value="A"
-                            checked={params.laneChangeMode === 'A'}
-                            onChange={() => onParamChange({ laneChangeMode: 'A' })}
-                        />
-                        <span>Mode A: Khi bị chặn</span>
-                    </label>
-                    <label title="Đổi làn dựa trên vận tốc dòng chảy xung quanh.">
-                        <input
-                            type="radio"
-                            name="lc"
-                            value="B"
-                            checked={params.laneChangeMode === 'B'}
-                            onChange={() => onParamChange({ laneChangeMode: 'B' })}
-                        />
-                        <span>Mode B: Theo dòng xe</span>
-                    </label>
-                </div>
-
-                {params.laneChangeMode === 'B' && (
-                    <div className="control-group">
-                        <label title="Ngưỡng xác suất để xe cân nhắc đổi làn.">
-                            Ngưỡng đổi làn <span>{params.lcThreshold}</span>
-                        </label>
-                        <input
-                            type="range"
-                            min="0.1"
-                            max="0.9"
-                            step="0.05"
-                            value={params.lcThreshold}
-                            onChange={(e) => onParamChange({ lcThreshold: parseFloat(e.target.value) })}
-                        />
+                        <div className="control-group">
+                            <label
+                                title="Xác suất di chuyển tối thiểu để ngăn tắc nghẽn khi mật độ cao. Giá trị 0 có thể gây deadlock."
+                                style={{ cursor: 'help', borderBottom: '1px dotted #888' }}
+                            >
+                                p<sub>min</sub> (Xác suất tối thiểu) <span>{params.p_min}</span>
+                            </label>
+                            <input
+                                type="range"
+                                min="0"
+                                max="1.0"
+                                step="0.05"
+                                value={params.p_min || 0.1}
+                                onChange={(e) => onParamChange({ p_min: parseFloat(e.target.value) })}
+                            />
+                        </div>
                     </div>
                 )}
 
@@ -255,41 +210,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({ params, onParamChang
 
                 <div className="control-group">
                     <label
-                        title="Độ phân tán khi chọn trạm thu phí. Giá trị thấp = Xe chọn trạm gần nhất. Giá trị cao = Xe phân tán đều hơn."
-                        style={{ cursor: 'help', borderBottom: '1px dotted #888' }}
-                    >
-                        σ (Độ phân tán Booth) <span>{params.sigma}</span>
-                    </label>
-                    <input
-                        type="range"
-                        min="0.5"
-                        max="5.0"
-                        step="0.1"
-                        value={params.sigma || 1.5}
-                        onChange={(e) => onParamChange({ sigma: parseFloat(e.target.value) })}
-                    />
-                </div>
-
-                <div className="control-group">
-                    <label
-                        title="Xác suất di chuyển tối thiểu để ngăn tắc nghẽn khi mật độ cao. Giá trị 0 có thể gây deadlock."
-                        style={{ cursor: 'help', borderBottom: '1px dotted #888' }}
-                    >
-                        p<sub>min</sub> (Xác suất tối thiểu) <span>{params.p_min}</span>
-                    </label>
-                    <input
-                        type="range"
-                        min="0"
-                        max="1.0"
-                        step="0.05"
-                        value={params.p_min || 0.1}
-                        onChange={(e) => onParamChange({ p_min: parseFloat(e.target.value) })}
-                    />
-                </div>
-
-                <div className="control-group">
-                    <label
-                        title="Độ nhạy tắc đường khi nhập làn (Merge). Giá trị cao = Nhập làn thận trọng hơn (chờ đường thoáng). Giá trị thấp = Nhập làn quyết liệt." // Improved tooltip
+                        title="Độ nhạy tắc đường khi nhập làn (Merge). Giá trị cao = Nhập làn thận trọng hơn (chờ đường thoáng). Giá trị thấp = Nhập làn quyết liệt."
                         style={{ cursor: 'help', borderBottom: '1px dotted #888' }}
                     >
                         α (Độ nhạy nhập làn) <span>{params.alpha}</span>

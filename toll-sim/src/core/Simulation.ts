@@ -38,6 +38,7 @@ export interface SimParams {
     sigma: number;
     alpha: number;
     p_min: number;
+    etcRatio: number;
 }
 
 export class Simulation {
@@ -50,6 +51,7 @@ export class Simulation {
         this.params = { ...initialParams };
         if (this.params.sigma === undefined) this.params.sigma = DEFAULT_SIGMA;
         if (this.params.alpha === undefined) this.params.alpha = DEFAULT_ALPHA;
+        if (this.params.etcRatio === undefined) this.params.etcRatio = 0.6; // Default fallback
         if (this.params.laneChangeCooldown === undefined)
             this.params.laneChangeCooldown = LC_COOLDOWN;
 
@@ -233,11 +235,15 @@ export class Simulation {
         if (Math.random() < lambda) {
             const lane = Math.floor(Math.random() * L);
             if (!this.grid[lane][0]) {
-                const type = Math.random() < 0.6 ? 'ETC' : 'MANUAL';
+                const type = Math.random() < this.params.etcRatio ? 'ETC' : 'MANUAL';
                 const car = newCar(type, lane);
                 car.targetBooth = assignTargetBooth(lane, L, B, sigma);
                 this.grid[lane][0] = car;
             }
         }
+    }
+
+    public updateParams(newParams: SimParams) {
+        this.params = { ...newParams };
     }
 }

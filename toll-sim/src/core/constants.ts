@@ -13,6 +13,7 @@ export const LC_COOLDOWN = 5;
 export const DEFAULT_LAMBDA = 0.6;
 export const DEFAULT_ACC = 0.9;
 export const DEFAULT_MU = 15;
+export const DEFAULT_ETC_RATIO = 0.6;
 
 // Lane Changing Defaults
 export const DEFAULT_LC_MODE = 'A';

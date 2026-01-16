@@ -3,8 +3,8 @@ import { Simulation, type SimParams } from './core/Simulation';
 import {
   DEFAULT_ACC, DEFAULT_LAMBDA, DEFAULT_MU,
   DEFAULT_A_MIN, DEFAULT_A_MAX, DEFAULT_D0, DEFAULT_BETA,
-  DEFAULT_L, DEFAULT_B, DEFAULT_LC_MODE, DEFAULT_LC_THRESHOLD,
-  LC_COOLDOWN, DEFAULT_SIGMA, DEFAULT_ALPHA, DEFAULT_P_MIN
+  DEFAULT_L, DEFAULT_B,
+  LC_COOLDOWN, DEFAULT_SIGMA, DEFAULT_ALPHA, DEFAULT_P_MIN, DEFAULT_ETC_RATIO
 } from './core/constants';
 import { CanvasView } from './ui/CanvasView';
 import { ControlPanel } from './ui/ControlPanel';
@@ -33,8 +33,6 @@ function App() {
     a: DEFAULT_ACC,
     mu: DEFAULT_MU,
     serviceMode: 'fixed',
-    laneChangeMode: DEFAULT_LC_MODE as any,
-    lcThreshold: DEFAULT_LC_THRESHOLD,
     useAdaptive: false,
     a_min: DEFAULT_A_MIN,
     a_max: DEFAULT_A_MAX,
@@ -43,7 +41,8 @@ function App() {
     sigma: DEFAULT_SIGMA,
     alpha: DEFAULT_ALPHA,
     laneChangeCooldown: LC_COOLDOWN,
-    p_min: DEFAULT_P_MIN
+    p_min: DEFAULT_P_MIN,
+    etcRatio: DEFAULT_ETC_RATIO
   });
 
   const handleStart = () => {
