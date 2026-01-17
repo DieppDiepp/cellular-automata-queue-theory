@@ -2,7 +2,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { Simulation, type SimParams } from '../core/Simulation';
+import { Simulation, type SimParams } from '../core/Simulation_batch';
 import {
     DEFAULT_ACC,
     DEFAULT_MU,
@@ -11,7 +11,6 @@ import {
     DEFAULT_D0,
     DEFAULT_ALPHA,
     DEFAULT_P_MIN,
-    DEFAULT_ETC_RATIO,
     DEFAULT_BETA,
     LC_COOLDOWN
 } from '../core/constants';
@@ -54,7 +53,7 @@ const FIXED_PARAMS: Omit<SimParams, 'L' | 'B' | 'lambda'> = {
     sigma: 1.5,
     alpha: DEFAULT_ALPHA,
     p_min: DEFAULT_P_MIN,
-    etcRatio: DEFAULT_ETC_RATIO
+    etcRatio: 1.0
 };
 
 // ================= CSV LOAD =================
