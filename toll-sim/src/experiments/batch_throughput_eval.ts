@@ -2,7 +2,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { Simulation, type SimParams } from '../core/Simulation';
+import { Simulation, type SimParams } from '../core/Simulation_batch';
 import {
     DEFAULT_ACC,
     DEFAULT_MU,
@@ -11,7 +11,6 @@ import {
     DEFAULT_D0,
     DEFAULT_ALPHA,
     DEFAULT_P_MIN,
-    DEFAULT_ETC_RATIO,
     DEFAULT_BETA,
     LC_COOLDOWN
 } from '../core/constants';
@@ -20,7 +19,8 @@ import {
 
 const EXPERIMENT_DURATION = 86000;
 
-const L_RANGE = { min: 3, max: 8 };
+// ✅ FULL RANGE
+const L_RANGE = { min: 3, max: 16 };
 const B_RANGE = { min: 3, max: 16 };
 
 // CSV path
@@ -32,7 +32,7 @@ const CSV_PATH = path.join(
 // Output folder
 const OUTPUT_DIR = path.join(process.cwd(), 'throughput_results');
 
-// Fixed params
+// Fixed params (logic already validated)
 const FIXED_PARAMS: Omit<SimParams, 'L' | 'B' | 'lambda'> = {
     a: DEFAULT_ACC,
     mu: DEFAULT_MU,
@@ -46,7 +46,7 @@ const FIXED_PARAMS: Omit<SimParams, 'L' | 'B' | 'lambda'> = {
     sigma: 1.5,
     alpha: DEFAULT_ALPHA,
     p_min: DEFAULT_P_MIN,
-    etcRatio: DEFAULT_ETC_RATIO
+    etcRatio: 1.0
 };
 
 // ================= CSV LOAD =================
@@ -83,7 +83,7 @@ async function loadArrivalPerPlaza(
 // ================= EXPERIMENT =================
 
 async function run() {
-    console.log('🚦 Batch Throughput Evaluation per Plaza');
+    console.log('🚦 Batch Throughput Evaluation (FULL B–L)');
     console.log('Reading:', CSV_PATH);
 
     if (!fs.existsSync(OUTPUT_DIR)) {
@@ -99,7 +99,9 @@ async function run() {
 
         for (let L = L_RANGE.min; L <= L_RANGE.max; L++) {
             for (let B = B_RANGE.min; B <= B_RANGE.max; B++) {
-                if (B <= L) continue;
+
+                // ✅ ONLY INVALID CASE
+                if (B < L) continue;
 
                 const params: SimParams = {
                     ...FIXED_PARAMS,

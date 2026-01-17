@@ -53,7 +53,7 @@ const FIXED_PARAMS: Omit<SimParams, 'L' | 'B' | 'lambda'> = {
     sigma: 1.5,
     alpha: DEFAULT_ALPHA,
     p_min: DEFAULT_P_MIN,
-    etcRatio: 1.0
+    etcRatio: 0.2
 };
 
 // ================= CSV LOAD =================
